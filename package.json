@@ -1,0 +1,15 @@
+{
+  "name": "whitelabel-social-store",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix store run dev",
+    "start": "npm --prefix store run dev",
+    "build": "npm --prefix store run build",
+    "test": "npm --prefix store test",
+    "db:init": "npm --prefix store run db:init",
+    "keys": "npm --prefix store run keys"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

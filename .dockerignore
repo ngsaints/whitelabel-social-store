@@ -1,0 +1,7 @@
+.git
+**/.env
+**/.env.*
+**/.openai
+**/dist
+**/node_modules
+**/*.db
