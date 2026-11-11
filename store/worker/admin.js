@@ -1,3 +1,4 @@
+import { paymentMethods } from "./gateways.js";
 import { sql } from "./turso.js";
 import {
   settings,
@@ -236,16 +237,26 @@ export async function adminApi(request, env) {
       }
       if (["staging", "production"].includes(b.uvviEnvironment))
         next.uvviEnvironment = b.uvviEnvironment;
-      const financialChanged = [
+      const smmChanged = next.smmKey !== config.smmKey;
+      const uvviChanged = [
         "uvviClientId",
         "uvviClientSecret",
         "uvviEnvironment",
-        "smmKey",
         "webhookSecret",
       ].some((k) => next[k] !== config[k]);
-      if (financialChanged) {
-        const existing = await sql(env, "SELECT COUNT(*) FROM orders");
-        if (Number(existing.rows[0][0].value) > 0)
+      const stripeChanged = ["stripeKey", "stripeWebhookSecret"].some(
+        (k) => next[k] !== config[k],
+      );
+      if (smmChanged || uvviChanged || stripeChanged) {
+        const existing = await sql(env, "SELECT payment_provider FROM orders");
+        if (
+          existing.rows.some(
+            (row) =>
+              smmChanged ||
+              (uvviChanged && row[0].value === "uvvipay") ||
+              (stripeChanged && row[0].value === "stripe"),
+          )
+        )
           return json(
             {
               error:
@@ -253,20 +264,30 @@ export async function adminApi(request, env) {
             },
             409,
           );
-        next.webhookRegistered = false;
-        next.salesEnabled = false;
+        if (uvviChanged) next.webhookRegistered = false;
+        if (next.stripeKey !== config.stripeKey) {
+          next.stripeWebhookId = "";
+          if (!b.stripeWebhookSecret?.trim()) next.stripeWebhookSecret = "";
+        }
       }
-      if (typeof b.salesEnabled === "boolean")
-        next.salesEnabled = b.salesEnabled;
-      if (
-        next.salesEnabled &&
-        (!next.smmKey ||
-          !next.uvviClientId ||
-          !next.uvviClientSecret ||
-          !next.webhookRegistered)
-      )
+      for (const key of ["salesEnabled", "stripeEnabled", "uvviEnabled"])
+        if (typeof b[key] === "boolean") next[key] = b[key];
+      if (next.stripeKey && !/^(sk|rk)_(test|live)_/.test(next.stripeKey))
         return json(
-          { error: "Configure e registre o webhook antes de abrir vendas." },
+          { error: "Use uma chave secreta Stripe de teste ou produção." },
+          400,
+        );
+      if (
+        next.stripeWebhookSecret &&
+        !next.stripeWebhookSecret.startsWith("whsec_")
+      )
+        return json({ error: "Segredo de webhook Stripe inválido." }, 400);
+      if (next.salesEnabled && (!next.smmKey || !paymentMethods(next).length))
+        return json(
+          {
+            error:
+              "Configure pelo menos um gateway e seu webhook antes de abrir vendas.",
+          },
           400,
         );
       await saveSettings(env, next);

@@ -1,3 +1,12 @@
+import {
+  stripeCheckout,
+  reconcileStripe,
+  stripeWebhook,
+  registerStripeWebhook,
+  safeStripeUrl,
+} from "./stripe.js";
+import { fulfillOrder } from "./fulfillment.js";
+import { paymentMethods } from "./gateways.js";
 import { sql } from "./turso.js";
 import { settings, saveSettings } from "./settings.js";
 import { digest, hmac, equal, session, seal, unseal } from "./security.js";
@@ -47,6 +56,10 @@ export async function paymentApi(request, env) {
   const path = new URL(request.url).pathname;
   try {
     const config = await settings(env);
+    if (path === "/api/webhooks/stripe")
+      return await stripeWebhook(request, env, config);
+    if (path === "/api/admin/stripe/webhook")
+      return await registerStripeWebhook(request, env, config);
     if (path === "/api/admin/webhook") {
       const auth = await session(request, env);
       if (!auth || auth.email !== config.adminEmail)
@@ -95,9 +108,11 @@ export async function paymentApi(request, env) {
         return reply({ error: "Assinatura inválida" }, 401);
       const payload = JSON.parse(raw);
       if (!payload.id) return reply({ ok: true });
-      const found = await sql(env, "SELECT id FROM orders WHERE payment_id=?", [
-        payload.id,
-      ]);
+      const found = await sql(
+        env,
+        "SELECT id FROM orders WHERE payment_id=? AND payment_provider='uvvipay'",
+        [payload.id],
+      );
       if (!found.rows.length) return reply({ ok: true });
       const order = await getOrder(env, found.rows[0][0].value);
       await reconcile(env, config, order);
@@ -113,20 +128,33 @@ export async function paymentApi(request, env) {
     if (path === "/api/checkout" && request.method === "POST") {
       if (request.headers.get("origin") !== new URL(request.url).origin)
         return reply({ error: "Origem inválida." }, 403);
-      if (!config.salesEnabled || !config.smmKey || !config.webhookRegistered)
-        return reply(
-          { error: "A loja ainda não habilitou os pagamentos." },
-          503,
-        );
+
       const b = await request.json();
+      const gateway = b.gateway || "uvvipay";
+      if (!["uvvipay", "stripe"].includes(gateway))
+        return reply({ error: "Meio de pagamento inválido." }, 400);
       if (!/^[a-f0-9-]{36}$/.test(b.id || ""))
         return reply({ error: "Identificador inválido" }, 400);
       let order = await getOrder(env, b.id);
       if (order) {
         if (order.owner !== owner)
           return reply({ error: "Pedido não encontrado" }, 404);
-        return checkoutReply(env, config, order);
+        return await checkoutReply(
+          env,
+          config,
+          order,
+          new URL(request.url).origin,
+        );
       }
+      if (
+        !config.salesEnabled ||
+        !config.smmKey ||
+        !paymentMethods(config).includes(gateway)
+      )
+        return reply(
+          { error: "Este meio de pagamento não está disponível." },
+          503,
+        );
       const services = await catalog(config),
         service = services.find((s) => String(s.service) === String(b.service));
       const quantity = Number(b.quantity);
@@ -147,7 +175,7 @@ export async function paymentApi(request, env) {
         typeof b.name !== "string" ||
         b.name.trim().length < 3 ||
         b.name.length > 150 ||
-        !validCpf(cpf) ||
+        (gateway === "uvvipay" && !validCpf(cpf)) ||
         !/^\S+@\S+\.\S+$/.test(b.email || "")
       )
         return reply(
@@ -175,12 +203,13 @@ export async function paymentApi(request, env) {
       const customer = await seal(env, {
         name: b.name.trim(),
         email: b.email,
-        cpf,
+        cpf: gateway === "uvvipay" ? cpf : "",
+        locale: b.locale === "en" ? "en" : "pt",
         link: link.href,
       });
       await sql(
         env,
-        "INSERT OR IGNORE INTO orders(id,owner,service_id,service_name,quantity,amount,status,customer,created_at) VALUES(?,?,?,?,?,?,'creating',?,datetime('now'))",
+        "INSERT OR IGNORE INTO orders(id,owner,service_id,service_name,quantity,amount,status,customer,payment_provider,created_at) VALUES(?,?,?,?,?,?,'creating',?,?,datetime('now'))",
         [
           b.id,
           owner,
@@ -189,12 +218,18 @@ export async function paymentApi(request, env) {
           quantity,
           amount,
           customer,
+          gateway,
         ],
       );
       order = await getOrder(env, b.id);
       if (order.owner !== owner)
         return reply({ error: "Pedido não encontrado" }, 404);
-      return checkoutReply(env, config, order);
+      return await checkoutReply(
+        env,
+        config,
+        order,
+        new URL(request.url).origin,
+      );
     }
     if (path.startsWith("/api/orders/") && request.method === "GET") {
       const order = await getOrder(env, path.split("/").pop());
@@ -209,18 +244,26 @@ export async function paymentApi(request, env) {
           "chargedback",
         ].includes(order.status)
       )
-        await reconcile(env, config, order);
+        await (order.payment_provider === "stripe"
+          ? reconcileStripe(env, config, order)
+          : reconcile(env, config, order));
       const current = await getOrder(env, order.id);
       return reply({
         id: current.id,
         status: current.status,
         amount: Number(current.amount),
+        gateway: current.payment_provider,
+        checkoutUrl:
+          current.payment_provider === "stripe"
+            ? safeStripeUrl(current.checkout_url)
+            : null,
         pix: current.pix || "",
         providerOrder: current.provider_order || null,
       });
     }
     return reply({ error: "Não encontrado" }, 404);
   } catch {
+    if(path.startsWith('/api/admin/'))return reply({error:'Não foi possível registrar o webhook. Confira credenciais, permissões e URL pública HTTPS.'},503);
     return reply(
       {
         error:
@@ -230,7 +273,9 @@ export async function paymentApi(request, env) {
     );
   }
 }
-async function checkoutReply(env, config, order) {
+async function checkoutReply(env, config, order, origin) {
+  if (order.payment_provider === "stripe")
+    return stripeCheckout(env, config, order, origin);
   if (order.payment_id)
     return reply({
       id: order.id,
@@ -300,38 +345,5 @@ async function reconcile(env, config, order) {
     return;
   }
   if (payment.status !== "paid") return;
-  const claim = await sql(
-    env,
-    "UPDATE orders SET status='submitting' WHERE id=? AND status='waiting_payment' RETURNING id",
-    [order.id],
-  );
-  if (!claim.rows.length) return;
-  const customer = await unseal(env, order.customer);
-  try {
-    const response = await fetch("https://smmhype.com/api/v2", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        key: config.smmKey,
-        action: "add",
-        service: order.service_id,
-        link: customer.link,
-        quantity: order.quantity,
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-    const data = await response.json();
-    if (!response.ok || !data.order) throw Error("Envio não confirmado");
-    await sql(
-      env,
-      "UPDATE orders SET status='submitted',provider_order=? WHERE id=?",
-      [data.order, order.id],
-    );
-  } catch {
-    await sql(
-      env,
-      "UPDATE orders SET status='fulfillment_unknown' WHERE id=? AND status='submitting'",
-      [order.id],
-    );
-  }
+  await fulfillOrder(env, config, order);
 }

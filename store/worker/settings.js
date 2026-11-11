@@ -13,6 +13,8 @@ export async function saveSettings(env, value) {
   );
 }
 export const secretFields = [
+  "stripeKey",
+  "stripeWebhookSecret",
   "smmKey",
   "resendKey",
   "uvviClientId",
@@ -20,7 +22,11 @@ export const secretFields = [
   "webhookSecret",
 ];
 export function publicSettings(value) {
-  const safe = { ...value };
+  const safe = {
+    uvviEnabled: value.uvviEnabled !== false,
+    stripeEnabled: Boolean(value.stripeEnabled),
+    ...value,
+  };
   for (const key of secretFields) {
     safe[key] = "";
     safe[key + "Configured"] = Boolean(value[key]);

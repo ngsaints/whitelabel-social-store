@@ -1,3 +1,4 @@
+import { paymentMethods } from "./gateways.js";
 import { page } from "./page.js";
 import { selectionApi } from "./turso.js";
 import { adminApi } from "./admin.js";
@@ -43,6 +44,8 @@ export default {
       );
     if (
       path === "/api/admin/webhook" ||
+      path === "/api/admin/stripe/webhook" ||
+      path === "/api/webhooks/stripe" ||
       path === "/api/webhooks/uvvipay" ||
       path === "/api/checkout" ||
       path.startsWith("/api/orders/")
@@ -68,6 +71,9 @@ export default {
               demo: false,
               currency: "BRL",
               salesEnabled: Boolean(configDb.salesEnabled),
+              paymentMethods: configDb.salesEnabled
+                ? paymentMethods(configDb)
+                : [],
               services: await catalog(configDb),
             },
             { headers: { "Cache-Control": "no-store" } },
