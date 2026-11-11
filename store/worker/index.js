@@ -6,6 +6,8 @@ import { settings } from "./settings.js";
 import { catalog } from "./catalog.js";
 import { paymentApi } from "./payments.js";
 import { checkoutHtml } from "./checkout-page.js";
+import { heroArt, visualCss } from "./visuals.js";
+import { languageHtml } from "./i18n.js";
 export const demo = [
   [1, "Seguidores para Instagram", "Instagram", "8.90", 100, 10000, true],
   [2, "Curtidas para Instagram", "Instagram", "3.50", 50, 20000, false],
@@ -27,15 +29,18 @@ export default {
   async fetch(request, env = {}) {
     const path = new URL(request.url).pathname;
     if (path === "/admin")
-      return new Response(adminPage, {
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-store",
-          "X-Frame-Options": "DENY",
-          "Content-Security-Policy":
-            "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'",
+      return new Response(
+        adminPage.replace("</body>", languageHtml + "</body>"),
+        {
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-store",
+            "X-Frame-Options": "DENY",
+            "Content-Security-Policy":
+              "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; frame-ancestors 'none'",
+          },
         },
-      });
+      );
     if (
       path === "/api/admin/webhook" ||
       path === "/api/webhooks/uvvipay" ||
@@ -102,6 +107,7 @@ export default {
     if (path !== "/") return new Response("Not found", { status: 404 });
     const config = JSON.stringify({
       name: configDb.name || env.STORE_NAME || "aura",
+      logoData: configDb.logoData || "",
       accent: /^#[a-f0-9]{6}$/i.test(configDb.accent || env.STORE_ACCENT || "")
         ? configDb.accent || env.STORE_ACCENT
         : "#78b9df",
@@ -113,7 +119,16 @@ export default {
     return new Response(
       page
         .replace("/* STORE_CONFIG */", config)
-        .replace("</body>", checkoutHtml + "</body>"),
+        .replace("</head>", visualCss + "</head>")
+        .replace(
+          /<div class="art"[\s\S]*?<\/div><\/div><\/section>/,
+          heroArt + "</section>",
+        )
+        .replace(
+          "O próximo capítulo<br>da sua presença",
+          "Seu próximo passo<br>nas redes sociais",
+        )
+        .replace("</body>", checkoutHtml + languageHtml + "</body>"),
       {
         headers: {
           "Content-Type": "text/html; charset=utf-8",
@@ -121,7 +136,7 @@ export default {
           "X-Content-Type-Options": "nosniff",
           "Referrer-Policy": "no-referrer",
           "Content-Security-Policy":
-            "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'",
+            "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; frame-ancestors 'none'",
         },
       },
     );

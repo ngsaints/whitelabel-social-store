@@ -1,11 +1,11 @@
 # White-label Social Store
 
-Loja responsiva em português, branca, com glassmorphism discreto. Código aberto sob licença MIT. Aura é uma marca de exemplo; cada instalação tem sua própria marca, dados e credenciais.
+Loja responsiva em português e inglês, branca, com glassmorphism e destaques por rede social. Código aberto sob licença MIT. Aura é uma marca de exemplo; cada instalação tem sua própria marca, dados e credenciais. O seletor de idioma está disponível na loja e no painel; nomes personalizados de serviços e textos da marca mantêm o conteúdo definido pelo lojista/provedor.
 
 ## Recursos
 
 - Catálogo SMMhype com busca e filtros por rede. Serviços do tipo `Default`.
-- Painel em `/admin`: marca, cor, frase, margem, câmbio manual e serviços ocultos.
+- Painel em `/admin`: nome, envio/remoção de logo PNG/JPG/WebP, cor, frase, margem, câmbio manual e serviços ocultos. Simulação de preço atualizada ao alterar margem e câmbio.
 - Chaves SMMhype, Resend e UvviPay configuradas no painel, criptografadas com AES-GCM no Turso. Campos vazios preservam o segredo; a API retorna apenas se está configurado.
 - Primeiro acesso por token de instalação; depois, login administrador por código de seis dígitos enviado pelo Resend, válido por dez minutos, com limite de cinco tentativas e intervalo de reenvio.
 - Turso para configurações, desafios OTP, seleções e pedidos. Consultas parametrizadas.
@@ -13,6 +13,8 @@ Loja responsiva em português, branca, com glassmorphism discreto. Código abert
 - Se o envio à SMMhype ficar incerto, o pedido exige conferência manual. Não há reenvio automático que possa duplicá-lo.
 
 ## Instalação rápida
+
+Para explorar somente o visual da loja: `npm run dev`. Sem banco/chaves, ela abre com catálogo demonstrativo. Para explorar o painel sem configurar serviços: `npm run preview:admin`, depois abra `http://localhost:4174/admin`. Essa prévia é restrita ao computador local, usa dados temporários em memória e bloqueia chamadas externas; não é a configuração de produção.
 
 Requer **Node.js 24+** e um banco Turso. Sem dependências npm para instalar.
 

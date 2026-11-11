@@ -2,6 +2,7 @@
   "name": "whitelabel-social-store",
   "private": true,
   "scripts": {
+    "preview:admin": "npm --prefix store run preview:admin",
     "dev": "npm --prefix store run dev",
     "start": "npm --prefix store run dev",
     "build": "npm --prefix store run build",

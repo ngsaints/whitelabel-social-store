@@ -7,7 +7,7 @@ const server = http.createServer(async (req, res) => {
     let body = "";
     for await (const chunk of req) {
       body += chunk;
-      if (body.length > 60000) {
+      if (body.length > 240000) {
         res.writeHead(413);
         res.end();
         return;

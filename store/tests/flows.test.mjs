@@ -171,6 +171,27 @@ test("instalação, segredos, OTP, Pix e webhook idempotente", async () => {
     const masked = await req("/api/admin/settings");
     assert.equal(masked.data.smmKey, "");
     assert.equal(masked.data.smmKeyConfigured, true);
+    assert.equal(
+      (
+        await req("/api/admin/settings", "PUT", {
+          logoData: "data:image/svg+xml;base64,PHN2Zz4=",
+        })
+      ).response.status,
+      400,
+    );
+    const logo = "data:image/png;base64,iVBORw0KGgo=";
+    assert.equal(
+      (
+        await req("/api/admin/settings", "PUT", {
+          logoData: logo,
+          name: "Loja Teste",
+        })
+      ).response.status,
+      200,
+    );
+    assert.equal((await req("/api/admin/settings")).data.logoData, logo);
+    const rendered = await app.fetch(new Request("https://store.test"), env);
+    assert.ok((await rendered.text()).includes('"name":"Loja Teste"'));
     assert.ok(!JSON.stringify(masked.data).includes("secret-smm"));
     assert.ok(
       !db

@@ -192,6 +192,18 @@ export async function adminApi(request, env) {
     if (path === "/api/admin/settings" && request.method === "PUT") {
       const b = await request.json();
       const next = { ...config };
+      if (b.logoData !== undefined) {
+        if (
+          typeof b.logoData !== "string" ||
+          b.logoData.length > 200000 ||
+          (b.logoData &&
+            !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(
+              b.logoData,
+            ))
+        )
+          return json({ error: "Logo inválido. Use PNG, JPG ou WebP." }, 400);
+        next.logoData = b.logoData;
+      }
       for (const k of [
         "name",
         "tagline",
