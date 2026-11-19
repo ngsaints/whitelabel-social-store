@@ -108,6 +108,8 @@ npm run preview:admin
 
 Abra [localhost:4174/admin](http://localhost:4174/admin). Essa prévia funciona somente no computador local e não processa pagamentos.
 
+Para ver a tela de login com código de 6 dígitos, use `npm run preview:login` e entre com `demo@example.com`. O código de teste aparece no terminal; nenhum e-mail é enviado.
+
 ## Construída para você operar
 
 - **Identidade própria:** logo, nome, cores e textos configuráveis.

@@ -9,6 +9,7 @@
     "keys": "node scripts/keys.mjs",
     "test": "node --test tests/*.test.mjs",
     "build": "node scripts/build.mjs",
-    "validate": "node scripts/validate-artifact.mjs"
+    "validate": "node scripts/validate-artifact.mjs",
+    "preview:login": "node tests/preview-admin.mjs --login"
   }
 }

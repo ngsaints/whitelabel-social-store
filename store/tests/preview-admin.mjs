@@ -5,6 +5,10 @@ import app from "../worker/index.js";
 import { schema } from "../worker/schema.js";
 import { saveSettings } from "../worker/settings.js";
 import { cookie } from "../worker/security.js";
+// --login (or PREVIEW_LOGIN=1) shows the e-mail + OTP screen; the code is printed here, never sent.
+const loginMode =
+  process.argv.includes("--login") || process.env.PREVIEW_LOGIN === "1";
+let lastCode = "";
 const db = new DatabaseSync(":memory:");
 schema.forEach((s) => db.exec(s));
 const env = {
@@ -13,6 +17,11 @@ const env = {
   APP_ENCRYPTION_KEY: "local-preview-only-no-production-secrets-00000000",
 };
 globalThis.fetch = async (url, options) => {
+  if (loginMode && String(url) === "https://api.resend.com/emails") {
+    lastCode = JSON.parse(options.body).text.match(/\d{6}/)[0];
+    console.log("Código de teste: " + lastCode);
+    return Response.json({ id: "preview" });
+  }
   if (!String(url).startsWith("https://preview.invalid/"))
     throw Error("External network disabled in preview");
   const statement = JSON.parse(options.body).requests[0].stmt,
@@ -50,6 +59,9 @@ await saveSettings(env, {
   currency: "USD",
   uvviEnvironment: "staging",
   salesEnabled: false,
+  ...(loginMode
+    ? { resendKey: "preview-only", resendFrom: "Demo <demo@example.com>" }
+    : {}),
 });
 http
   .createServer(async (req, res) => {
@@ -64,6 +76,11 @@ http
           return;
         }
       }
+      if (loginMode && req.url === "/__preview/otp") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ email: "demo@example.com", code: lastCode }));
+        return;
+      }
       const authCookie = await cookie(
         env,
         "demo@example.com",
@@ -71,7 +88,7 @@ http
       );
       const request = new Request(origin + req.url, {
         method: req.method,
-        headers: { ...req.headers, cookie: authCookie },
+        headers: loginMode ? req.headers : { ...req.headers, cookie: authCookie },
         ...(!["GET", "HEAD"].includes(req.method) ? { body } : {}),
       });
       const response = await app.fetch(request, env);

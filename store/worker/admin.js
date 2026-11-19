@@ -13,6 +13,35 @@ const json = (data, status = 200, headers = {}) =>
     status,
     headers: { "Cache-Control": "no-store", ...headers },
   });
+// Table layout with inline styles so it renders in Gmail, Outlook and Apple Mail.
+function otpEmailHtml(config, code) {
+  const safe = (v) =>
+    String(v ?? "").replace(
+      /[&<>"']/g,
+      (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+    );
+  const accent = /^#[a-f0-9]{6}$/i.test(config.accent || "")
+    ? config.accent
+    : "#78b9df";
+  const digits = [...code]
+    .map(
+      (d) =>
+        '<td style="padding:0 4px"><div style="width:44px;height:54px;line-height:54px;border:1px solid #dbe6ee;border-radius:12px;background:#f6fafc;font:600 26px Segoe UI,Arial,sans-serif;color:#2f4656;text-align:center">' +
+        d +
+        "</div></td>",
+    )
+    .join("");
+  return (
+    '<!doctype html><html lang="pt-BR"><body style="margin:0;padding:0;background:#f3f6f8"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6f8;padding:40px 16px"><tr><td align="center"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;background:#ffffff;border-radius:20px;border:1px solid #e6eef3;font-family:Segoe UI,Arial,sans-serif"><tr><td style="height:6px;background:' +
+    accent +
+    ';border-radius:20px 20px 0 0"></td></tr><tr><td style="padding:34px 32px 10px"><div style="font-size:11px;letter-spacing:2px;color:#8cabc0">' +
+    safe(String(config.name || "aura").toUpperCase()) +
+    '</div><h1 style="margin:14px 0 8px;font-size:24px;font-weight:500;color:#34434e">Seu código de acesso</h1><p style="margin:0;font-size:14px;line-height:1.7;color:#7b8e9b">Use o código abaixo para entrar no painel da sua loja.</p></td></tr><tr><td align="center" style="padding:22px 24px"><table role="presentation" cellpadding="0" cellspacing="0"><tr>' +
+    digits +
+    '</tr></table></td></tr><tr><td style="padding:0 32px 32px"><p style="margin:0;font-size:12px;line-height:1.8;color:#8c9ba6">Válido por 10 minutos. Não compartilhe este código com ninguém. Se você não pediu o acesso, ignore este e-mail.</p></td></tr></table></td></tr></table></body></html>'
+  );
+}
 export async function adminApi(request, env) {
   const path = new URL(request.url).pathname;
   if (
@@ -132,6 +161,7 @@ export async function adminApi(request, env) {
             "Seu código é " +
             code +
             ". Válido por 10 minutos. Não compartilhe este código.",
+          html: otpEmailHtml(config, code),
         }),
         signal: AbortSignal.timeout(15000),
       });

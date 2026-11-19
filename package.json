@@ -8,7 +8,8 @@
     "build": "npm --prefix store run build",
     "test": "npm --prefix store test",
     "db:init": "npm --prefix store run db:init",
-    "keys": "npm --prefix store run keys"
+    "keys": "npm --prefix store run keys",
+    "preview:login": "npm --prefix store run preview:login"
   },
   "engines": {
     "node": ">=24"
