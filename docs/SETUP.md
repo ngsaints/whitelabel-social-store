@@ -83,7 +83,7 @@ A seleção contém links públicos salvos no navegador/Turso e não deve recebe
 
 ## Referências dos provedores
 
-- [SMMhype API](https://smmhype.com/api)
+- [SMMhype: criar conta](https://smmhype.com/ref/mhcpt) · [documentação da API](https://smmhype.com/api)
 - [Turso HTTP](https://github.com/tursodatabase/libsql/blob/main/docs/HTTP_V2_SPEC.md)
 - [Resend: envio e idempotência](https://resend.com/blog/engineering-idempotency-keys)
 - [UvviPay: pagamentos](https://developers.uvvipay.com.br/api-reference/payments/create)
