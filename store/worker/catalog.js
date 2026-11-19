@@ -1,12 +1,31 @@
-export async function catalog(config) {
-  const res = await fetch("https://smmhype.com/api/v2", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ key: config.smmKey, action: "services" }),
-    signal: AbortSignal.timeout(15000),
+// Raw provider catalog per API key; pricing and hidden services are applied
+// on every call so admin changes take effect immediately.
+const catalogCache = new Map();
+const catalogTtl = 60000;
+async function providerServices(smmKey) {
+  const cached = catalogCache.get(smmKey);
+  if (cached && cached.expires > Date.now()) return cached.pending;
+  const pending = (async () => {
+    const res = await fetch("https://smmhype.com/api/v2", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ key: smmKey, action: "services" }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = await res.json();
+    if (!res.ok || !Array.isArray(data)) throw Error("Catálogo indisponível");
+    return data;
+  })();
+  catalogCache.clear();
+  catalogCache.set(smmKey, { pending, expires: Date.now() + catalogTtl });
+  pending.catch(() => {
+    if (catalogCache.get(smmKey)?.pending === pending)
+      catalogCache.delete(smmKey);
   });
-  const data = await res.json();
-  if (!res.ok || !Array.isArray(data)) throw Error("Catálogo indisponível");
+  return pending;
+}
+export async function catalog(config) {
+  const data = await providerServices(config.smmKey);
   const hidden = new Set(
     String(config.hiddenServices || "")
       .split(",")

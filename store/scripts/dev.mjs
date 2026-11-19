@@ -13,10 +13,22 @@ const server = http.createServer(async (req, res) => {
         return;
       }
     }
+    // Never trust a client-sent IP header; derive it from the socket or, behind
+    // a reverse proxy (TRUST_PROXY=1), from the entry the proxy appended last.
+    const headers = { ...req.headers };
+    delete headers["cf-connecting-ip"];
+    const forwarded = String(req.headers["x-forwarded-for"] || "")
+      .split(",")
+      .map((ip) => ip.trim())
+      .filter(Boolean);
+    headers["cf-connecting-ip"] =
+      (process.env.TRUST_PROXY === "1" && forwarded.at(-1)) ||
+      req.socket.remoteAddress ||
+      "unknown";
     const response = await app.fetch(
       new Request(origin + req.url, {
         method: req.method,
-        headers: req.headers,
+        headers,
         ...(!["GET", "HEAD"].includes(req.method) ? { body } : {}),
       }),
       process.env,

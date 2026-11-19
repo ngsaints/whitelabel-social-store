@@ -11,6 +11,7 @@ import { sql } from "./turso.js";
 import { settings, saveSettings } from "./settings.js";
 import { digest, hmac, equal, session, seal, unseal } from "./security.js";
 import { catalog } from "./catalog.js";
+import { rateLimit, clientIp, tooMany } from "./limits.js";
 const reply = (data, status = 200) =>
   Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 export async function uvvi(config, path, method = "GET", body, key) {
@@ -155,6 +156,8 @@ export async function paymentApi(request, env) {
           { error: "Este meio de pagamento não está disponível." },
           503,
         );
+      if (!(await rateLimit(env, "checkout-ip", clientIp(request), 20, 3600000)))
+        return tooMany();
       const services = await catalog(config),
         service = services.find((s) => String(s.service) === String(b.service));
       const quantity = Number(b.quantity);

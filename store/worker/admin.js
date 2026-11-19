@@ -7,6 +7,7 @@ import {
   secretFields,
 } from "./settings.js";
 import { digest, hmac, equal, cookie, session, seal } from "./security.js";
+import { rateLimit, clientIp, tooMany } from "./limits.js";
 const json = (data, status = 200, headers = {}) =>
   Response.json(data, {
     status,
@@ -38,6 +39,12 @@ export async function adminApi(request, env) {
         authenticated: Boolean(await session(request, env)),
         setup: !config.initialized,
       });
+    if (
+      request.method === "POST" &&
+      ["/api/admin/setup", "/api/admin/otp/send", "/api/admin/otp/verify"].includes(path) &&
+      !(await rateLimit(env, "admin-auth-ip", clientIp(request), 30, 900000))
+    )
+      return tooMany();
     if (path === "/api/admin/setup" && request.method === "POST") {
       if (config.initialized)
         return json({ error: "Instalação já concluída." }, 409);
@@ -81,17 +88,18 @@ export async function adminApi(request, env) {
     }
     if (path === "/api/admin/otp/send" && request.method === "POST") {
       const { email } = await request.json();
-      if (
-        String(email || "")
-          .trim()
-          .toLowerCase() !== config.adminEmail
-      )
-        return json({ error: "E-mail não autorizado." }, 403);
       if (!config.resendKey || !config.resendFrom)
         return json(
           { error: "Configure Resend e remetente no primeiro acesso." },
           503,
         );
+      // Same answer for any address, so the admin e-mail cannot be discovered.
+      if (
+        String(email || "")
+          .trim()
+          .toLowerCase() !== config.adminEmail
+      )
+        return json({ ok: true });
       const now = Date.now();
       const random = new Uint32Array(1);
       let n;

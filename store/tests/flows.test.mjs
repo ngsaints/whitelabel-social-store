@@ -206,8 +206,9 @@ test("instalação, segredos, OTP, Pix e webhook idempotente", async () => {
     assert.equal(
       (await req("/api/admin/otp/send", "POST", { email: "other@example.com" }))
         .response.status,
-      403,
+      200,
     );
+    assert.equal(code, "", "nenhum código enviado a e-mail não autorizado");
     assert.equal(
       (await req("/api/admin/otp/send", "POST", { email: "admin@example.com" }))
         .response.status,

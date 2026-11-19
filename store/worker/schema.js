@@ -1,4 +1,6 @@
+import { rateLimitTable } from "./limits.js";
 export const schema = [
+  rateLimitTable,
   "CREATE TABLE IF NOT EXISTS selections (session_hash TEXT PRIMARY KEY, payload TEXT NOT NULL, updated_at TEXT NOT NULL)",
   "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY,value TEXT NOT NULL)",
   "CREATE TABLE IF NOT EXISTS otp (email TEXT PRIMARY KEY,challenge TEXT NOT NULL,hash TEXT NOT NULL,expires INTEGER NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,sent_at INTEGER NOT NULL)",

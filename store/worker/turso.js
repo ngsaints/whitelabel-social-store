@@ -1,3 +1,4 @@
+import { rateLimit, clientIp, tooMany } from "./limits.js";
 export async function sql(env, statement, args = []) {
   const endpoint = new URL(
     env.TURSO_DATABASE_URL.replace(/^libsql:/, "https:"),
@@ -68,6 +69,8 @@ export async function selectionApi(request, env) {
         items: data.rows.length ? JSON.parse(data.rows[0][0].value) : [],
       });
     }
+    if (!(await rateLimit(env, "selection-ip", clientIp(request), 60, 600000)))
+      return tooMany();
     const text = await request.text();
     if (text.length > 20000)
       return reply({ error: "Seleção muito grande" }, 413);
@@ -92,6 +95,11 @@ export async function selectionApi(request, env) {
       "INSERT INTO selections(session_hash,payload,updated_at) VALUES(?,?,datetime('now')) ON CONFLICT(session_hash) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at",
       [hash, JSON.stringify(items)],
     );
+    if (Math.random() < 0.02)
+      await sql(
+        env,
+        "DELETE FROM selections WHERE updated_at<datetime('now','-30 days')",
+      ).catch(() => {});
     return reply({ enabled: true });
   } catch {
     return reply({ error: "Não foi possível sincronizar a seleção." }, 503);

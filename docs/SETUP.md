@@ -54,6 +54,8 @@ Execute `npm run db:init` com as variáveis do mesmo banco antes de iniciar o c�
 
 O projeto é independente de uma plataforma de hospedagem. Para Node/Docker, configure as variáveis pelo provedor, `HOST=0.0.0.0` e `APP_URL=https://sua-loja.com`, com HTTPS no proxy. O Dockerfile usa porta 4173. Rode `npm run db:init` com as mesmas variáveis antes de iniciar.
 
+A loja limita tentativas por IP no checkout, no login do admin e na sincronização da seleção. No Cloudflare Workers o IP vem do próprio Cloudflare. No servidor Node, o IP é o da conexão; atrás de um proxy reverso (nginx, Caddy, load balancer), defina `TRUST_PROXY=1` para usar o último endereço de `X-Forwarded-For`. Sem isso, todos os clientes compartilham o IP do proxy e o limite é atingido rápido.
+
 ```sh
 docker build -t social-store .
 docker run --env-file store/.env -e HOST=0.0.0.0 -p 4173:4173 social-store
