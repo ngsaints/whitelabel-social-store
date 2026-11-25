@@ -1,10 +1,9 @@
 export function paymentMethods(config) {
   return [
-    ...(config.uvviEnabled !== false &&
-    config.uvviClientId &&
-    config.uvviClientSecret &&
+    ...(config.revantEnabled !== false &&
+    config.revantApiKey &&
     config.webhookRegistered
-      ? ["uvvipay"]
+      ? ["revantpay"]
       : []),
     ...(config.stripeEnabled && config.stripeKey && config.stripeWebhookSecret
       ? ["stripe"]

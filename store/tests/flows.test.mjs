@@ -88,7 +88,7 @@ test("instalação, segredos, OTP, Pix e webhook idempotente", async () => {
       if (providerFails) throw Error("Timeout");
       return Response.json({ order: 12345 });
     }
-    if (u.includes("/v1/payments")) {
+    if (u.includes("/v1/charges")) {
       if (options.method === "POST") {
         paymentCalls++;
         const body = JSON.parse(options.body);
@@ -159,8 +159,7 @@ test("instalação, segredos, OTP, Pix e webhook idempotente", async () => {
           smmKey: "secret-smm",
           resendKey: "secret-resend",
           resendFrom: "Store <test@example.com>",
-          uvviClientId: "secret-client-id",
-          uvviClientSecret: "secret-client-secret",
+          revantApiKey: "secret-api-key",
           exchangeRate: 5,
           markup: 100,
           currency: "USD",
@@ -275,9 +274,9 @@ test("instalação, segredos, OTP, Pix e webhook idempotente", async () => {
       "sha256=" + (await hmac(config.webhookSecret, ts + "." + raw));
     async function hook(sig = signature) {
       return app.fetch(
-        new Request("https://store.test/api/webhooks/uvvipay", {
+        new Request("https://store.test/api/webhooks/revantpay", {
           method: "POST",
-          headers: { "X-UvviPay-Timestamp": ts, "X-UvviPay-Signature": sig },
+          headers: { "X-RevantPay-Timestamp": ts, "X-RevantPay-Signature": sig },
           body: raw,
         }),
         env,
@@ -302,7 +301,7 @@ test("instalação, segredos, OTP, Pix e webhook idempotente", async () => {
     assert.equal(
       (
         await req("/api/admin/settings", "PUT", {
-          uvviClientSecret: "another-secret",
+          revantApiKey: "another-secret",
         })
       ).response.status,
       409,

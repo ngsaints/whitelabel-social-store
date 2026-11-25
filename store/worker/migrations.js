@@ -3,7 +3,7 @@ export async function migrateOrders(execute) {
   const nameIndex = result.cols.findIndex((c) => c.name === "name");
   const columns = new Set(result.rows.map((row) => row[nameIndex].value));
   for (const [name, type] of [
-    ["payment_provider", "TEXT NOT NULL DEFAULT 'uvvipay'"],
+    ["payment_provider", "TEXT NOT NULL DEFAULT 'revantpay'"],
     ["checkout_url", "TEXT"],
     ["payment_intent", "TEXT"],
   ])

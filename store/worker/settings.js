@@ -17,13 +17,12 @@ export const secretFields = [
   "stripeWebhookSecret",
   "smmKey",
   "resendKey",
-  "uvviClientId",
-  "uvviClientSecret",
+  "revantApiKey",
   "webhookSecret",
 ];
 export function publicSettings(value) {
   const safe = {
-    uvviEnabled: value.uvviEnabled !== false,
+    revantEnabled: value.revantEnabled !== false,
     stripeEnabled: Boolean(value.stripeEnabled),
     ...value,
   };

@@ -11,29 +11,10 @@ import { sql } from "./turso.js";
 import { settings, saveSettings } from "./settings.js";
 import { digest, hmac, equal, session, seal, unseal } from "./security.js";
 import { catalog } from "./catalog.js";
+import { revant } from "./revantpay.js";
 import { rateLimit, clientIp, tooMany } from "./limits.js";
 const reply = (data, status = 200) =>
   Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
-export async function uvvi(config, path, method = "GET", body, key) {
-  const base =
-    config.uvviEnvironment === "production"
-      ? "https://api.uvvipay.com.br"
-      : "https://api-staging.uvvipay.com.br";
-  const response = await fetch(base + path, {
-    method,
-    headers: {
-      "client-id": config.uvviClientId,
-      "client-secret": config.uvviClientSecret,
-      "Content-Type": "application/json",
-      ...(key ? { "x-idempotency-key": key } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-    signal: AbortSignal.timeout(15000),
-  });
-  const data = await response.json();
-  if (!response.ok) throw Error("Provedor de pagamento indisponível");
-  return data;
-}
 async function getOrder(env, id) {
   const data = await sql(env, "SELECT * FROM orders WHERE id=?", [id]);
   return data.rows.length
@@ -76,27 +57,27 @@ export async function paymentApi(request, env) {
           400,
         );
       if (config.webhookRegistered) return reply({ ok: true });
-      await uvvi(config, "/v1/webhooks", "POST", {
-        webhook_url: new URL(request.url).origin + "/api/webhooks/uvvipay",
+      await revant(config, "/webhooks", "POST", {
+        url: new URL(request.url).origin + "/api/webhooks/revantpay",
         events: [
-          "transaction.paid",
-          "transaction.refunded",
-          "transaction.chargedback",
-          "transaction.cancelled",
-          "transaction.expired",
+          "charge.paid",
+          "charge.refunded",
+          "charge.chargedback",
+          "charge.cancelled",
+          "charge.expired",
         ],
-        hmac_secret: config.webhookSecret,
+        secret: config.webhookSecret,
       });
       await saveSettings(env, { ...config, webhookRegistered: true });
       return reply({ ok: true });
     }
-    if (path === "/api/webhooks/uvvipay") {
+    if (path === "/api/webhooks/revantpay") {
       if (request.method !== "POST")
         return reply({ error: "Método inválido" }, 405);
       const raw = await request.text();
       if (raw.length > 50000) return reply({}, 413);
-      const timestamp = request.headers.get("X-UvviPay-Timestamp") || "";
-      const signature = request.headers.get("X-UvviPay-Signature") || "";
+      const timestamp = request.headers.get("X-RevantPay-Timestamp") || "";
+      const signature = request.headers.get("X-RevantPay-Signature") || "";
       if (
         !config.webhookSecret ||
         !/^\d+$/.test(timestamp) ||
@@ -111,7 +92,7 @@ export async function paymentApi(request, env) {
       if (!payload.id) return reply({ ok: true });
       const found = await sql(
         env,
-        "SELECT id FROM orders WHERE payment_id=? AND payment_provider='uvvipay'",
+        "SELECT id FROM orders WHERE payment_id=? AND payment_provider='revantpay'",
         [payload.id],
       );
       if (!found.rows.length) return reply({ ok: true });
@@ -131,8 +112,8 @@ export async function paymentApi(request, env) {
         return reply({ error: "Origem inválida." }, 403);
 
       const b = await request.json();
-      const gateway = b.gateway || "uvvipay";
-      if (!["uvvipay", "stripe"].includes(gateway))
+      const gateway = b.gateway || "revantpay";
+      if (!["revantpay", "stripe"].includes(gateway))
         return reply({ error: "Meio de pagamento inválido." }, 400);
       if (!/^[a-f0-9-]{36}$/.test(b.id || ""))
         return reply({ error: "Identificador inválido" }, 400);
@@ -178,7 +159,7 @@ export async function paymentApi(request, env) {
         typeof b.name !== "string" ||
         b.name.trim().length < 3 ||
         b.name.length > 150 ||
-        (gateway === "uvvipay" && !validCpf(cpf)) ||
+        (gateway === "revantpay" && !validCpf(cpf)) ||
         !/^\S+@\S+\.\S+$/.test(b.email || "")
       )
         return reply(
@@ -206,7 +187,7 @@ export async function paymentApi(request, env) {
       const customer = await seal(env, {
         name: b.name.trim(),
         email: b.email,
-        cpf: gateway === "uvvipay" ? cpf : "",
+        cpf: gateway === "revantpay" ? cpf : "",
         locale: b.locale === "en" ? "en" : "pt",
         link: link.href,
       });
@@ -287,9 +268,9 @@ async function checkoutReply(env, config, order, origin) {
       pix: order.pix || "",
     });
   const c = await unseal(env, order.customer);
-  const data = await uvvi(
+  const data = await revant(
     config,
-    "/v1/payments",
+    "/charges",
     "POST",
     {
       externalId: order.id,
@@ -308,7 +289,6 @@ async function checkoutReply(env, config, order, origin) {
         },
       ],
     },
-    order.id,
   );
   if (!data.id || Number(data.amount) !== Number(order.amount))
     throw Error("Resposta inválida");
@@ -325,9 +305,9 @@ async function checkoutReply(env, config, order, origin) {
   });
 }
 async function reconcile(env, config, order) {
-  const payment = await uvvi(
+  const payment = await revant(
     config,
-    "/v1/payments/" + encodeURIComponent(order.payment_id),
+    "/charges/" + encodeURIComponent(order.payment_id),
   );
   if (
     payment.id !== order.payment_id ||

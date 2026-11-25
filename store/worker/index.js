@@ -46,7 +46,7 @@ export default {
       path === "/api/admin/webhook" ||
       path === "/api/admin/stripe/webhook" ||
       path === "/api/webhooks/stripe" ||
-      path === "/api/webhooks/uvvipay" ||
+      path === "/api/webhooks/revantpay" ||
       path === "/api/checkout" ||
       path.startsWith("/api/orders/")
     )
