@@ -88,18 +88,18 @@ test("instalação, segredos, OTP, Pix e webhook idempotente", async () => {
       if (providerFails) throw Error("Timeout");
       return Response.json({ order: 12345 });
     }
-    if (u.includes("/v1/charges")) {
+    if (u.includes("revantpay.com/api/v1/charges")) {
       if (options.method === "POST") {
         paymentCalls++;
         const body = JSON.parse(options.body);
         const result = {
-          id: crypto.randomUUID(),
-          externalReference: body.externalId,
+          id: "ch_" + crypto.randomUUID(),
           amount: body.amount,
-          paymentMethod: "pix",
-          pix: { qrcode: "000201-test" },
+          status: "pending",
+          metadata: { order_id: options.headers["Idempotency-Key"] },
+          pix: { qr_code: "000201-test", qr_code_base64: "data:image/png;base64,test" },
         };
-        payments.set(body.externalId, result);
+        payments.set(result.id, result);
         return Response.json(result);
       }
       const id = u.split("/").pop();
@@ -268,21 +268,20 @@ test("instalação, segredos, OTP, Pix e webhook idempotente", async () => {
     );
     const config = await settings(env),
       payment = payments.get(id);
-    const raw = JSON.stringify({ id: payment.id, event: "transaction.paid" }),
+    const raw = JSON.stringify({ event: "charge.paid", charge: { id: payment.id } }),
       ts = String(Math.floor(Date.now() / 1000));
-    const signature =
-      "sha256=" + (await hmac(config.webhookSecret, ts + "." + raw));
+    const signature = await hmac(config.webhookSecret, ts + "." + raw);
     async function hook(sig = signature) {
       return app.fetch(
         new Request("https://store.test/api/webhooks/revantpay", {
           method: "POST",
-          headers: { "X-RevantPay-Timestamp": ts, "X-RevantPay-Signature": sig },
+          headers: { "X-Revantpay-Signature": "t=" + ts + ",v1=" + sig },
           body: raw,
         }),
         env,
       );
     }
-    assert.equal((await hook("sha256=invalid")).status, 401);
+    assert.equal((await hook("0".repeat(64))).status, 401);
     assert.equal(submissions, 0);
     await hook();
     assert.equal(submissions, 0);

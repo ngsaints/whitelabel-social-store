@@ -9,9 +9,17 @@ import { fulfillOrder } from "./fulfillment.js";
 import { paymentMethods } from "./gateways.js";
 import { sql } from "./turso.js";
 import { settings, saveSettings } from "./settings.js";
-import { digest, hmac, equal, session, seal, unseal } from "./security.js";
+import {
+  digest,
+  hmac,
+  equal,
+  session,
+  seal,
+  unseal,
+} from "./security.js";
+import { randomUUID } from "node:crypto";
 import { catalog } from "./catalog.js";
-import { revant } from "./revantpay.js";
+import { revant, parseRevantSignature } from "./revantpay.js";
 import { rateLimit, clientIp, tooMany } from "./limits.js";
 const reply = (data, status = 200) =>
   Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
@@ -57,17 +65,23 @@ export async function paymentApi(request, env) {
           400,
         );
       if (config.webhookRegistered) return reply({ ok: true });
-      await revant(config, "/webhooks", "POST", {
-        url: new URL(request.url).origin + "/api/webhooks/revantpay",
-        events: [
-          "charge.paid",
-          "charge.refunded",
-          "charge.chargedback",
-          "charge.cancelled",
-          "charge.expired",
-        ],
-        secret: config.webhookSecret,
-      });
+      await revant(
+        config,
+        "/webhooks",
+        "POST",
+        {
+          url: new URL(request.url).origin + "/api/webhooks/revantpay",
+          events: [
+            "charge.paid",
+            "charge.refunded",
+            "charge.chargedback",
+            "charge.cancelled",
+            "charge.expired",
+          ],
+          secret: config.webhookSecret,
+        },
+        randomUUID(),
+      );
       await saveSettings(env, { ...config, webhookRegistered: true });
       return reply({ ok: true });
     }
@@ -76,24 +90,27 @@ export async function paymentApi(request, env) {
         return reply({ error: "Método inválido" }, 405);
       const raw = await request.text();
       if (raw.length > 50000) return reply({}, 413);
-      const timestamp = request.headers.get("X-RevantPay-Timestamp") || "";
-      const signature = request.headers.get("X-RevantPay-Signature") || "";
+      const parsed = parseRevantSignature(
+        request.headers.get("X-Revantpay-Signature") ||
+          request.headers.get("X-RevantPay-Signature"),
+      );
       if (
         !config.webhookSecret ||
-        !/^\d+$/.test(timestamp) ||
-        Math.abs(Date.now() / 1000 - Number(timestamp)) > 300 ||
+        !parsed ||
+        Math.abs(Date.now() / 1000 - Number(parsed.timestamp)) > 300 ||
         !equal(
-          "sha256=" + (await hmac(config.webhookSecret, timestamp + "." + raw)),
-          signature,
+          await hmac(config.webhookSecret, parsed.timestamp + "." + raw),
+          parsed.signature,
         )
       )
         return reply({ error: "Assinatura inválida" }, 401);
       const payload = JSON.parse(raw);
-      if (!payload.id) return reply({ ok: true });
+      const chargeId = payload.charge?.id || payload.id;
+      if (!chargeId) return reply({ ok: true });
       const found = await sql(
         env,
         "SELECT id FROM orders WHERE payment_id=? AND payment_provider='revantpay'",
-        [payload.id],
+        [chargeId],
       );
       if (!found.rows.length) return reply({ ok: true });
       const order = await getOrder(env, found.rows[0][0].value);
@@ -268,40 +285,34 @@ async function checkoutReply(env, config, order, origin) {
       pix: order.pix || "",
     });
   const c = await unseal(env, order.customer);
+  const amount = Number(order.amount) / 100;
   const data = await revant(
     config,
     "/charges",
     "POST",
     {
-      externalId: order.id,
-      amount: Number(order.amount),
-      paymentMethod: "pix",
-      customer: {
-        name: c.name,
-        email: c.email,
-        document: { number: c.cpf, type: "cpf" },
-      },
-      items: [
-        {
-          title: order.service_name,
-          quantity: 1,
-          unitPrice: Number(order.amount),
-        },
-      ],
+      amount,
+      payment_method: "pix",
+      description: order.service_name + " x" + order.quantity,
+      customer: { name: c.name, email: c.email, cpf: c.cpf },
+      metadata: { order_id: order.id },
     },
+    order.id,
   );
-  if (!data.id || Number(data.amount) !== Number(order.amount))
-    throw Error("Resposta inválida");
+  const chargeId = data.id || data.charge?.id;
+  const pix =
+    data.pix?.qr_code || data.qr_code || data.pix?.qrcode || "";
+  if (!/^ch_/.test(chargeId || "") || !pix) throw Error("Resposta inválida");
   await sql(
     env,
     "UPDATE orders SET payment_id=?,pix=?,status='waiting_payment' WHERE id=? AND payment_id IS NULL",
-    [data.id, data.pix?.qrcode || "", order.id],
+    [chargeId, pix, order.id],
   );
   return reply({
     id: order.id,
     status: "waiting_payment",
     amount: Number(order.amount),
-    pix: data.pix?.qrcode || "",
+    pix,
   });
 }
 async function reconcile(env, config, order) {
@@ -309,24 +320,22 @@ async function reconcile(env, config, order) {
     config,
     "/charges/" + encodeURIComponent(order.payment_id),
   );
-  if (
-    payment.id !== order.payment_id ||
-    Number(payment.amount) !== Number(order.amount) ||
-    payment.externalReference !== order.id ||
-    payment.paymentMethod !== "pix"
-  )
+  const paid =
+    payment.status === "paid" || payment.status === "approved";
+  const closed = ["refunded", "chargedback", "cancelled", "expired", "refused"].includes(
+    payment.status,
+  );
+  if (Number(payment.amount) !== Number(order.amount) / 100)
     throw Error("Pagamento divergente");
-  if (
-    ["refunded", "chargedback", "cancelled", "expired", "refused"].includes(
-      payment.status,
-    )
-  ) {
+  if (payment.metadata?.order_id && payment.metadata.order_id !== order.id)
+    throw Error("Pagamento divergente");
+  if (closed) {
     await sql(env, "UPDATE orders SET status=? WHERE id=?", [
       payment.status,
       order.id,
     ]);
     return;
   }
-  if (payment.status !== "paid") return;
+  if (!paid) return;
   await fulfillOrder(env, config, order);
 }
