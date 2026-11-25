@@ -31,7 +31,7 @@ test("migração preserva pedidos Pix e pode ser repetida", async () => {
   assert.equal(
     db.prepare("SELECT payment_provider FROM orders WHERE id='old-order'").get()
       .payment_provider,
-    "uvvipay",
+    "uvvipay", // legado: pedidos antigos permanecem vinculados ao provedor anterior
   );
   assert.equal(
     db.prepare("SELECT status FROM orders").get().status,
@@ -180,7 +180,7 @@ test("Stripe pelo painel, checkout sem CPF, assinatura, reconciliação e isolam
       exchangeRate: 1,
       smmKey: "smm_test",
       salesEnabled: false,
-      uvviEnabled: false,
+      revantEnabled: false,
     });
     db.prepare(
       "INSERT INTO orders(id,owner,service_id,service_name,quantity,amount,status,customer,created_at) VALUES('old-pix','old','1','Old Pix',100,100,'submitted','placeholder',datetime('now'))",
@@ -236,7 +236,7 @@ test("Stripe pelo painel, checkout sem CPF, assinatura, reconciliação e isolam
     assert.ok(
       checkout.data.checkoutUrl.startsWith("https://checkout.stripe.com/"),
     );
-    await req("/api/checkout", "POST", { ...body, gateway: "uvvipay" });
+    await req("/api/checkout", "POST", { ...body, gateway: "revantpay" });
     assert.equal(sessionCalls, 1);
     assert.equal(
       db.prepare("SELECT payment_provider FROM orders WHERE id=?").get(id)

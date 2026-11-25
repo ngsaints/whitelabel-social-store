@@ -57,7 +57,7 @@ await saveSettings(env, {
   markup: 50,
   exchangeRate: 5,
   currency: "USD",
-  uvviEnvironment: "staging",
+  revantEnabled: true,
   salesEnabled: false,
   ...(loginMode
     ? { resendKey: "preview-only", resendFrom: "Demo <demo@example.com>" }

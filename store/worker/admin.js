@@ -100,7 +100,6 @@ export async function adminApi(request, env) {
         markup: 50,
         exchangeRate: 1,
         currency: "USD",
-        uvviEnvironment: "staging",
         salesEnabled: false,
         webhookSecret: crypto.randomUUID() + crypto.randomUUID(),
       };
@@ -273,25 +272,20 @@ export async function adminApi(request, env) {
           next[k] = n;
         }
       }
-      if (["staging", "production"].includes(b.uvviEnvironment))
-        next.uvviEnvironment = b.uvviEnvironment;
       const smmChanged = next.smmKey !== config.smmKey;
-      const uvviChanged = [
-        "uvviClientId",
-        "uvviClientSecret",
-        "uvviEnvironment",
-        "webhookSecret",
-      ].some((k) => next[k] !== config[k]);
+      const revantChanged = ["revantApiKey", "webhookSecret"].some(
+        (k) => next[k] !== config[k],
+      );
       const stripeChanged = ["stripeKey", "stripeWebhookSecret"].some(
         (k) => next[k] !== config[k],
       );
-      if (smmChanged || uvviChanged || stripeChanged) {
+      if (smmChanged || revantChanged || stripeChanged) {
         const existing = await sql(env, "SELECT payment_provider FROM orders");
         if (
           existing.rows.some(
             (row) =>
               smmChanged ||
-              (uvviChanged && row[0].value === "uvvipay") ||
+              (revantChanged && row[0].value === "revantpay") ||
               (stripeChanged && row[0].value === "stripe"),
           )
         )
@@ -302,13 +296,13 @@ export async function adminApi(request, env) {
             },
             409,
           );
-        if (uvviChanged) next.webhookRegistered = false;
+        if (revantChanged) next.webhookRegistered = false;
         if (next.stripeKey !== config.stripeKey) {
           next.stripeWebhookId = "";
           if (!b.stripeWebhookSecret?.trim()) next.stripeWebhookSecret = "";
         }
       }
-      for (const key of ["salesEnabled", "stripeEnabled", "uvviEnabled"])
+      for (const key of ["salesEnabled", "stripeEnabled", "revantEnabled"])
         if (typeof b[key] === "boolean") next[key] = b[key];
       if (next.stripeKey && !/^(sk|rk)_(test|live)_/.test(next.stripeKey))
         return json(
